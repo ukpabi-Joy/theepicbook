@@ -1,0 +1,272 @@
+# EpicBook Application Pipeline
+#
+# Configures the two AWS EC2 instances provisioned by the Infrastructure
+# Pipeline (frontend + backend, addresses already filled into
+# ansible/inventory/hosts.ini) and deploys EpicBook onto them using the
+# Ansible roles in ansible/.
+#
+# Prerequisites in Azure DevOps:
+#   - Secure Files: an SSH private key uploaded as "epicbook-aws-key" (no extension)
+#   - A variable group (see `variables:` below) containing:
+#       mysqlAdminUsername
+#       mysqlAdminPassword   <-- mark this one "secret" in the variable group UI
+#     These are passed into the playbook as -e db_admin_username / db_admin_password.
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - ansible
+      - server.js
+      - package.json
+      - package-lock.json
+      - routes
+      - models
+      - views
+      - public
+      - config
+      - db
+      - azure-pipelines.yml
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  # TODO: rename to the variable group you create with mysqlAdminUsername / mysqlAdminPassword
+  - group: Epicbook-mysql-secrets
+  - name: sshSecureFileName
+    value: 'epicbook-aws-key'
+  - name: ansibleInventoryPath
+    value: 'ansible/inventory/hosts.ini'
+  - name: ansiblePlaybookPath
+    value: 'ansible/site.yml'
+  # Every job runs on its own disposable Microsoft-hosted agent, so this path is only
+  # ever valid for the lifetime of the job that downloaded the key into it.
+  - name: sshKeyPath
+    value: '$(Agent.TempDirectory)/ssh/epicbook-aws-key'
+
+stages:
+
+  # ---------------------------------------------------------------------------
+  # STAGE 1: Prepare
+  # Sanity-checks that the tooling installs cleanly and the Secure File is
+  # reachable, before Validate spends time on real inventory/SSH checks.
+  # ---------------------------------------------------------------------------
+  - stage: Prepare
+    displayName: 'Prepare'
+    jobs:
+      - job: Prepare
+        displayName: 'Install tooling and fetch SSH key'
+        steps:
+          - checkout: self
+            displayName: 'Checkout repository'
+
+          - script: |
+              set -e
+              sudo apt-get update -y
+              sudo apt-get install -y python3 python3-pip
+              # pip gives a consistent, pinned Ansible version on every fresh agent;
+              # the Ubuntu package repo's ansible version drifts across image updates.
+              python3 -m pip install --upgrade pip
+              python3 -m pip install ansible
+            displayName: 'Install Python3 and Ansible'
+
+          - script: ansible-galaxy collection install community.mysql
+            displayName: 'Install community.mysql collection'
+
+          - task: DownloadSecureFile@1
+            name: downloadSSHKey
+            displayName: 'Download SSH private key (Secure Files: epicbook-aws-key)'
+            inputs:
+              secureFile: '$(sshSecureFileName)'
+
+          - script: |
+              set -e
+              mkdir -p "$(Agent.TempDirectory)/ssh"
+              cp "$(downloadSSHKey.secureFilePath)" "$(sshKeyPath)"
+              chmod 600 "$(sshKeyPath)"
+            displayName: 'Move private key to temp path and restrict permissions'
+
+  # ---------------------------------------------------------------------------
+  # STAGE 2: Validate
+  # Re-does the setup from Prepare (fresh disposable agent, nothing carries over)
+  # and then validates the inventory, the playbook syntax, and real SSH
+  # reachability to both hosts before anything is changed.
+  # ---------------------------------------------------------------------------
+  - stage: Validate
+    displayName: 'Validate'
+    dependsOn: Prepare
+    jobs:
+      - job: Validate
+        displayName: 'Validate inventory, syntax, and SSH connectivity'
+        steps:
+          - checkout: self
+            displayName: 'Checkout repository'
+
+          # Re-installed because this stage runs on a brand-new Microsoft-hosted
+          # agent — Azure Pipelines stages do not share a filesystem or VM.
+          - script: |
+              set -e
+              sudo apt-get update -y
+              sudo apt-get install -y python3 python3-pip
+              python3 -m pip install --upgrade pip
+              python3 -m pip install ansible
+            displayName: 'Install Python3 and Ansible (fresh agent)'
+
+          - script: ansible-galaxy collection install community.mysql
+            displayName: 'Install community.mysql collection (fresh agent)'
+
+          # Re-downloaded for the same reason: Secure Files are staged per-job,
+          # not shared across stages.
+          - task: DownloadSecureFile@1
+            name: downloadSSHKey
+            displayName: 'Download SSH private key (Secure Files: epicbook-aws-key)'
+            inputs:
+              secureFile: '$(sshSecureFileName)'
+
+          - script: |
+              set -e
+              mkdir -p "$(Agent.TempDirectory)/ssh"
+              cp "$(downloadSSHKey.secureFilePath)" "$(sshKeyPath)"
+              chmod 600 "$(sshKeyPath)"
+            displayName: 'Move private key to temp path and restrict permissions'
+
+          - script: ansible-inventory -i $(ansibleInventoryPath) --list
+            displayName: 'Validate inventory syntax'
+
+          - script: ansible-playbook $(ansiblePlaybookPath) -i $(ansibleInventoryPath) --syntax-check
+            displayName: 'Syntax-check site.yml'
+
+          - script: |
+              # Fails clearly (non-zero exit) if either host is unreachable,
+              # which fails this stage and blocks Configure and Deploy.
+              ansible -i $(ansibleInventoryPath) all -m ping --private-key "$(sshKeyPath)"
+            displayName: 'Test SSH connectivity to frontend and backend hosts'
+
+  # ---------------------------------------------------------------------------
+  # STAGE 3: Configure and Deploy
+  # Runs the real playbook (common, frontend, backend, database, verification
+  # plays all live inside ansible/site.yml). DB credentials are injected only
+  # via environment variables mapped from the secret variable group — never
+  # echoed, and never placed directly in the command-line macro text.
+  # ---------------------------------------------------------------------------
+  - stage: ConfigureAndDeploy
+    displayName: 'Configure and Deploy'
+    dependsOn: Validate
+    jobs:
+      - job: Deploy
+        displayName: 'Run EpicBook deployment playbook'
+        steps:
+          - checkout: self
+            displayName: 'Checkout repository'
+
+          - script: |
+              set -e
+              sudo apt-get update -y
+              sudo apt-get install -y python3 python3-pip
+              python3 -m pip install --upgrade pip
+              python3 -m pip install ansible
+            displayName: 'Install Python3 and Ansible (fresh agent)'
+
+          - script: ansible-galaxy collection install community.mysql
+            displayName: 'Install community.mysql collection (fresh agent)'
+
+          - task: DownloadSecureFile@1
+            name: downloadSSHKey
+            displayName: 'Download SSH private key (Secure Files: epicbook-aws-key)'
+            inputs:
+              secureFile: '$(sshSecureFileName)'
+
+          - script: |
+              set -e
+              mkdir -p "$(Agent.TempDirectory)/ssh"
+              cp "$(downloadSSHKey.secureFilePath)" "$(sshKeyPath)"
+              chmod 600 "$(sshKeyPath)"
+            displayName: 'Move private key to temp path and restrict permissions'
+
+          - script: |
+              set -o pipefail
+              mkdir -p "$(Build.ArtifactStagingDirectory)"
+              # DB_ADMIN_USERNAME/DB_ADMIN_PASSWORD come from the env: block below,
+              # never from $(mysqlAdminPassword) macro text — secret pipeline
+              # variables are deliberately NOT expanded via macro syntax by Azure,
+              # so env: mapping is the only way to use them here. Nothing below
+              # echoes their values; Ansible's own no_log:true covers the tasks
+              # that touch them inside the roles.
+              ansible-playbook -i $(ansibleInventoryPath) $(ansiblePlaybookPath) \
+                --private-key "$(sshKeyPath)" \
+                -e "db_admin_username=${DB_ADMIN_USERNAME}" \
+                -e "db_admin_password=${DB_ADMIN_PASSWORD}" \
+                2>&1 | tee "$(Build.ArtifactStagingDirectory)/ansible-deploy.log"
+            displayName: 'Deploy EpicBook (common, frontend, backend, database, verification)'
+            env:
+              DB_ADMIN_USERNAME: $(mysqlAdminUsername)
+              DB_ADMIN_PASSWORD: $(mysqlAdminPassword)
+
+          # Only the Ansible console log is published — never the Secure File,
+          # never the private key, and this log contains no credential values
+          # because the roles mark the relevant tasks no_log:true.
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish deployment log for Verify stage'
+            inputs:
+              targetPath: '$(Build.ArtifactStagingDirectory)/ansible-deploy.log'
+              artifact: 'ansible-deploy-log'
+
+  # ---------------------------------------------------------------------------
+  # STAGE 4: Verify
+  # site.yml already ran its own verification play as the last part of Stage 3
+  # (backend service/port/DB checks, frontend Nginx/HTTP check). This stage
+  # does NOT re-run the playbook — it parses Stage 3's play recap to confirm
+  # 0 failed / 0 unreachable, then prints a plain-language, non-sensitive
+  # summary for a human to do a final manual browser check.
+  # ---------------------------------------------------------------------------
+  - stage: Verify
+    displayName: 'Verify'
+    dependsOn: ConfigureAndDeploy
+    jobs:
+      - job: Verify
+        displayName: 'Confirm deployment result and summarize'
+        steps:
+          - checkout: self
+            displayName: 'Checkout repository (needed to read the frontend IP from inventory)'
+
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download deployment log from Configure and Deploy stage'
+            inputs:
+              buildType: 'current'
+              artifactName: 'ansible-deploy-log'
+              targetPath: '$(Pipeline.Workspace)/deploy-log'
+
+          - script: |
+              set -e
+              LOG_FILE="$(Pipeline.Workspace)/deploy-log/ansible-deploy.log"
+
+              RECAP=$(grep -A 20 "PLAY RECAP" "$LOG_FILE" || true)
+              if [ -z "$RECAP" ]; then
+                echo "Could not find a PLAY RECAP in the deployment log — treating as failure."
+                exit 1
+              fi
+
+              echo "$RECAP"
+
+              FAILED_TOTAL=$(echo "$RECAP" | grep -oP 'failed=\K\d+' | awk '{s+=$1} END{print s+0}')
+              UNREACHABLE_TOTAL=$(echo "$RECAP" | grep -oP 'unreachable=\K\d+' | awk '{s+=$1} END{print s+0}')
+
+              if [ "$FAILED_TOTAL" -ne 0 ] || [ "$UNREACHABLE_TOTAL" -ne 0 ]; then
+                echo "Deployment recap reports $FAILED_TOTAL failed / $UNREACHABLE_TOTAL unreachable — deployment did not fully succeed."
+                exit 1
+              fi
+
+              FRONTEND_HOST=$(awk '/^\[frontend\]/{flag=1; next} /^\[/{flag=0} flag && NF {print $1; exit}' $(ansibleInventoryPath))
+              FRONTEND_IP=$(awk '/^\[frontend\]/{flag=1; next} /^\[/{flag=0} flag && NF {print; exit}' $(ansibleInventoryPath) | grep -oP 'ansible_host=\K\S+')
+              BACKEND_HOST=$(awk '/^\[backend\]/{flag=1; next} /^\[/{flag=0} flag && NF {print $1; exit}' $(ansibleInventoryPath))
+
+              echo ""
+              echo "===== Deployment Verification Summary ====="
+              echo "Hosts configured : frontend ($FRONTEND_HOST), backend ($BACKEND_HOST)"
+              echo "Play recap       : 0 failed, 0 unreachable"
+              echo "Manual check     : open http://$FRONTEND_IP/ in a browser to confirm EpicBook loads"
+              echo "============================================="
+            displayName: 'Parse Stage 3 recap and print deployment summary'
