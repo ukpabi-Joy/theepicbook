@@ -29,7 +29,6 @@
       - "--exclude=.git"
       - "--exclude=ansible"
       - "--exclude=node_modules"
-  delegate_to: "{{ inventory_hostname }}"
 
 - name: Install Node.js dependencies
   ansible.builtin.command: npm ci --production
