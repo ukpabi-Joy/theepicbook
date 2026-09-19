@@ -33,7 +33,7 @@
   community.mysql.mysql_db:
     name: "{{ db_name }}"
     state: import
-    target: "{{ playbook_dir }}/../db/BuyTheBook_Schema.sql"
+    target: "/opt/epicbook/db/BuyTheBook_Schema.sql"
     login_host: "{{ mysql_fqdn }}"
     login_user: "{{ db_admin_username }}"
     login_password: "{{ db_admin_password }}"
@@ -54,7 +54,7 @@
   community.mysql.mysql_db:
     name: "{{ db_name }}"
     state: import
-    target: "{{ playbook_dir }}/../db/author_seed.sql"
+    target: "/opt/epicbook/db/author_seed.sql"
     login_host: "{{ mysql_fqdn }}"
     login_user: "{{ db_admin_username }}"
     login_password: "{{ db_admin_password }}"
@@ -75,7 +75,7 @@
   community.mysql.mysql_db:
     name: "{{ db_name }}"
     state: import
-    target: "{{ playbook_dir }}/../db/books_seed.sql"
+    target: "/opt/epicbook/db/books_seed.sql"
     login_host: "{{ mysql_fqdn }}"
     login_user: "{{ db_admin_username }}"
     login_password: "{{ db_admin_password }}"
