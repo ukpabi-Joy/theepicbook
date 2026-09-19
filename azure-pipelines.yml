@@ -144,6 +144,8 @@ stages:
               # which fails this stage and blocks Configure and Deploy.
               ansible -i $(ansibleInventoryPath) all -m ping --private-key "$(sshKeyPath)"
             displayName: 'Test SSH connectivity to frontend and backend hosts'
+            env:
+              ANSIBLE_HOST_KEY_CHECKING: 'False'
 
   # ---------------------------------------------------------------------------
   # STAGE 3: Configure and Deploy
@@ -204,6 +206,7 @@ stages:
             env:
               DB_ADMIN_USERNAME: $(mysqlAdminUsername)
               DB_ADMIN_PASSWORD: $(mysqlAdminPassword)
+              ANSIBLE_HOST_KEY_CHECKING: 'False'
 
           # Only the Ansible console log is published — never the Secure File,
           # never the private key, and this log contains no credential values
