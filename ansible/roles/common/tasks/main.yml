@@ -10,3 +10,8 @@
       - git
       - curl
     state: present
+
+- name: Install PyMySQL for Ansible MySQL modules
+  ansible.builtin.apt:
+    name: python3-pymysql
+    state: present
