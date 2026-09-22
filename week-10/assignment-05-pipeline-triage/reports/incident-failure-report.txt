@@ -1,0 +1,40 @@
+========================================
+CI/CD Pipeline Failure Triage Report
+========================================
+Full Name: Joy Ukpabi
+Timestamp: 2026-09-21T19:38:00Z
+Provider: Azure DevOps
+Organization: https://dev.azure.com/DMI-Cohort-3
+Project: Epicbook Deployment
+
+----------------------------------------
+Infrastructure Pipeline (Pipeline ID: 9)
+----------------------------------------
+Run ID: 41
+Branch: refs/heads/main
+Status: completed
+Result: succeeded
+Completion Time: 2026-09-19T12:12:19.020721+00:00
+[PASS] Infrastructure Pipeline — Latest completed run succeeded
+
+----------------------------------------
+Application Pipeline (Pipeline ID: 10)
+----------------------------------------
+Run ID: 55
+Branch: refs/heads/drill/pipeline-failure
+Status: completed
+Result: failed
+Completion Time: 2026-09-21T19:15:51.426824+00:00
+Retrieving step console logs for build 55 ...
+[ERROR] Build Logs API returned HTTP 403 while listing logs for build 55
+[FAIL] Application Pipeline — Run failed, but log retrieval also failed; root cause not confirmed from available evidence
+
+
+Summary:
+PASS: 1
+WARN: 0
+FAIL: 1
+ERROR: 1
+Overall Status: ERROR
+Script Exit Code: 3
+Report File: /home/joy_ukpabi/ansible-onboarding/theepicbook/week-10/assignment-05-pipeline-triage/reports/pipeline-health-report.txt

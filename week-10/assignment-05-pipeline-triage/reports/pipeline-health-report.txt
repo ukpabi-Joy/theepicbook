@@ -1,0 +1,38 @@
+========================================
+CI/CD Pipeline Failure Triage Report
+========================================
+Full Name: Joy Ukpabi
+Timestamp: 2026-09-22T03:02:19Z
+Provider: Azure DevOps
+Organization: https://dev.azure.com/DMI-Cohort-3
+Project: Epicbook Deployment
+
+----------------------------------------
+Infrastructure Pipeline (Pipeline ID: 9)
+----------------------------------------
+Run ID: 41
+Branch: refs/heads/main
+Status: completed
+Result: succeeded
+Completion Time: 2026-09-19T12:12:19.020721+00:00
+[PASS] Infrastructure Pipeline — Latest completed run succeeded
+
+----------------------------------------
+Application Pipeline (Pipeline ID: 10)
+----------------------------------------
+Run ID: 56
+Branch: refs/heads/drill/pipeline-failure
+Status: completed
+Result: succeeded
+Completion Time: 2026-09-22T02:58:06.915017+00:00
+[PASS] Application Pipeline — Latest completed run succeeded
+
+
+Summary:
+PASS: 2
+WARN: 0
+FAIL: 0
+ERROR: 0
+Overall Status: HEALTHY
+Script Exit Code: 0
+Report File: /home/joy_ukpabi/ansible-onboarding/theepicbook/week-10/assignment-05-pipeline-triage/reports/pipeline-health-report.txt
