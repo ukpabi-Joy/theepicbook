@@ -1,0 +1,81 @@
+services:
+  reverse-proxy:
+    image: nginx:alpine
+    ports:
+      - "8081:80"
+    volumes:
+      - ./proxy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./logs/nginx:/var/log/nginx
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    networks:
+      - front-tier
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    image: epicbook-frontend:1.0
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - front-tier
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    image: epicbook-backend:1.0
+    environment:
+      NODE_ENV: production
+      PORT: "8080"
+      JAWSDB_URL: mysql://${DB_USER}:${DB_PASSWORD}@database:3306/${DB_NAME}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - front-tier
+      - back-tier
+    restart: unless-stopped
+
+  database:
+    image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${DB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./db/BuyTheBook_Schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./db/author_seed.sql:/docker-entrypoint-initdb.d/02-authors.sql:ro
+      - ./db/books_seed.sql:/docker-entrypoint-initdb.d/03-books.sql:ro
+    networks:
+      - back-tier
+    restart: unless-stopped
+
+networks:
+  front-tier:
+  back-tier:
+    internal: true
+
+volumes:
+  db_data:
