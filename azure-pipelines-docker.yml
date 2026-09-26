@@ -97,25 +97,20 @@ stages:
 
           - script: |
               set -e
-              scp -o StrictHostKeyChecking=no -i "$(sshKeyPath)" \
-                docker-compose.yml proxy/nginx.conf \
-                ubuntu@$(vmPublicIp):~/theepicbook/
-              scp -o StrictHostKeyChecking=no -i "$(sshKeyPath)" \
-                proxy/nginx.conf ubuntu@$(vmPublicIp):~/theepicbook/proxy/nginx.conf
-            displayName: 'Copy latest Compose file and proxy config to the VM'
-
-          - script: |
+              cat > deploy-remote.sh <<REMOTE_EOF
               set -e
-              ssh -o StrictHostKeyChecking=no -i "$(sshKeyPath)" ubuntu@$(vmPublicIp) '
-                cd ~/theepicbook &&
-                sed -i "s|image: epicbook-backend:1.0|image: $(dockerHubUsername)/epicbook-backend:$(imageTag)|" docker-compose.yml &&
-                sed -i "s|image: epicbook-frontend:1.0|image: $(dockerHubUsername)/epicbook-frontend:$(imageTag)|" docker-compose.yml &&
-                docker pull $(dockerHubUsername)/epicbook-backend:$(imageTag) &&
-                docker pull $(dockerHubUsername)/epicbook-frontend:$(imageTag) &&
-                docker compose up -d --remove-orphans &&
-                docker compose ps
-              '
-            displayName: 'Pull new images and restart the stack (safe rollout)'
+              cd ~/theepicbook
+              git checkout -- docker-compose.yml proxy/nginx.conf
+              git pull origin capstone/theepicbook-docker
+              sed -i "s|image: epicbook-backend:1.0|image: $(dockerHubUsername)/epicbook-backend:$(imageTag)|" docker-compose.yml
+              sed -i "s|image: epicbook-frontend:1.0|image: $(dockerHubUsername)/epicbook-frontend:$(imageTag)|" docker-compose.yml
+              docker pull $(dockerHubUsername)/epicbook-backend:$(imageTag)
+              docker pull $(dockerHubUsername)/epicbook-frontend:$(imageTag)
+              docker compose up -d --remove-orphans
+              docker compose ps
+              REMOTE_EOF
+              ssh -o StrictHostKeyChecking=no -i "$(sshKeyPath)" ubuntu@$(vmPublicIp) 'bash -s' < deploy-remote.sh
+            displayName: 'Pull latest source, apply new image tags, restart the stack'
 
   # ---------------------------------------------------------------------
   # STAGE 3: Verify
